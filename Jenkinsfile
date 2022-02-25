@@ -19,7 +19,7 @@ pipeline {
         stage('Build docker image') {
             steps {
                 script {
-                    def DOCKER_IMAGE = 'esso4real/pipeline:v29'
+                    def DOCKER_IMAGE = 'esso4real/pipeline:version-1'
                     withCredentials([usernamePassword(credentialsId: 'dockerhub-id', passwordVariable: 'PASS', usernameVariable: 'USER')]) {
     
                     sh "docker build -t ${DOCKER_IMAGE} ." 
@@ -30,25 +30,46 @@ pipeline {
             }
         }
         stage('Provisioning server') {
+            environment {
+                AWS_ACCESS_KEY_ID = "AKIAQN3LPLSTCCK6Y5M5"
+                AWS_SECRET_KEY_ID = "MLpyM0YDS8LRIkir9Ug49VwKQJxj3jV59A81+mY3"
+            }
             steps{
                 script{
+                    dir('terraform')
                     sh "terraform init"
                     sh "terraform apply --auto-approve"
+                    EC2_LINUX_IP = sh (
+                        script: ""terraform output linux_ip""
+                        returnStdout: true
+                    ).trim()
+    
                 }
             }
         }
         stage ('Deploy') {
         steps {
             script {
-            def REMOTE_USER = 'ec2-user' 
-            def REMOTE_HOST = '54.204.49.238'
-            sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST}"
-            sh "scp -o StrictHostKeyChecking=nodeploy.sh ${REMOTE_USER}@${REMOTE_HOST}:~/"
-            sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} 'chmod +x deploy.sh'"
-            sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} ./deploy.sh"
+            sleep(time:90, unit: "SECONDS") 
+           
+            //def REMOTE_USER = 'ec2-user' 
+            //def REMOTE_HOST = '54.204.49.238'
+            def ec2instance = "ec2-user@${EC2_LINUX_IP}"
+            sshagent(['ec2-server-key']) {
+                sh "scp -o StrictHostKeyChecking=no deploy.sh ${ec2instance}:/home/ec2-user"
+                sh "ssh -o StrictHostKeyChecking=no ${ec2instance} 'chmod +x deploy.sh'"
+                sh "ssh -o StrictHostKeyChecking=no ${ec2instance} ./deploy.sh"
+            }
+
+
+            //sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST}"
+            //sh "scp -o StrictHostKeyChecking=nodeploy.sh ${REMOTE_USER}@${REMOTE_HOST}:~/"
+            //sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} 'chmod +x deploy.sh'"
+            //sh "ssh -o StrictHostKeyChecking=no ${REMOTE_USER}@${REMOTE_HOST} ./deploy.sh"
             }
         }
     }             
 }
 
 }
+
